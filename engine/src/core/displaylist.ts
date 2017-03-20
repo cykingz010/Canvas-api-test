@@ -1,288 +1,294 @@
 namespace engine {
 
+    export interface Drawable {
+
+        draw(context2D: CanvasRenderingContext2D);
+
+    }
+
+    export abstract class DisplayObject implements Drawable {
+
+        x: number = 0;
+        y: number = 0;
+        globalAlpha: number = 1;
+        relativeAlpha: number = 1;
+        scaleX: number = 1;
+        scaleY: number = 1;
+        rotation: number = 0;
+        globalMatrix: Matrix;
+        relativeMatrix: Matrix;
+        parent: DisplayObjectContainer;
+        eventArray: engine.TheEvent[] = new Array();
+
+        draw(context2D: CanvasRenderingContext2D) {
+
+            context2D.save();
+            this.relativeMatrix = new Matrix();
+            this.relativeMatrix.updateFromDisplayObject(this.x, this.y, this.scaleX, this.scaleY, this.rotation);
+
+            if (this.parent) {
+                this.globalAlpha = this.parent.globalAlpha * this.relativeAlpha;
+                this.globalMatrix = matrixAppendMatrix(this.relativeMatrix, this.parent.globalMatrix);
+            }
+            else {
+                this.globalAlpha = this.relativeAlpha;
+                this.globalMatrix = new Matrix(1, 0, 0, 1, 0, 0);
+            }
+
+            context2D.globalAlpha = this.globalAlpha;
+            context2D.setTransform(this.relativeMatrix.m11, this.relativeMatrix.m12, this.relativeMatrix.m21, this.relativeMatrix.m22, this.relativeMatrix.dx, this.relativeMatrix.dy);
+            this.render(context2D);
+
+        }
+
+        addEventListener(eventType: string, func: Function, target: DisplayObject, ifCapture?: boolean) {
+            let e = new engine.TheEvent(eventType, ifCapture, target, func);
+            this.eventArray.push(e);
+        }
+
+        render(context2D: CanvasRenderingContext2D) {
+
+        }
+
+        abstract hitTest(x: number, y: number);
+
+
+    }
+
+    export class Bitmap extends DisplayObject {
+
+        image: HTMLImageElement;
+        private _width: number = -1;
+        private _height: number = -1;
+        private _src: string = "";
+        private isLoaded: boolean = false;
+        private _visible: boolean = true;  //暂无用
+
+        constructor() {
+
+            super();
+            this.image = document.createElement('img');
+
+        }
+
+        set src(src: string) {
+            this._src = src;
+            this.isLoaded = false;
+        }
+
+        set width(width: number) {
+            this.width = width;
+        }
+
+        set height(height: number) {
+            this.height = height;
+        }
+
+        set visible(visible: boolean) {
+            this.visible = visible;
+        }
+
+        render(context2D: CanvasRenderingContext2D) {
+
+            context2D.globalAlpha = this.relativeAlpha;
+
+            if (this.isLoaded) {
+                if (this.width == -1 || this.height == -1) {
+                    context2D.drawImage(this.image, 0, 0);
+                } else {
+                    context2D.drawImage(this.image, 0, 0, this.width, this.height);
+                }
+            }
+
+            else {
+                this.image.src = this._src;
+                this.image.onload = () => {
+                    if (this.width == -1 || this.height == -1) {
+                        context2D.drawImage(this.image, 0, 0);
+                    } else {
+                        context2D.drawImage(this.image, 0, 0, this.width, this.height);
+                    }
+                    this.isLoaded = true;
+                }
+            }
+
+        }
+
+        hitTest(x: number, y: number) {
+            if (this.image) {
+                var rect = new Rectangle(0, 0, this.image.width, this.image.height);
+                console.log("width:" + rect.width + " height" + rect.height);
+                if (rect.isPointInRectangle(x, y)) {
+                    var eventManager = engine.EventManager.getInstance();
+                    if (this.eventArray.length != 0) {
+                        eventManager.targets.push(this);
+                    }
+                    return this;
+                } else {
+                    return null;
+                }
+            }
+        }
+    }
+
+
+
+    export class TextField extends DisplayObject {
+
+        text: string = "";
+        color: string = "";
+        private _size: number = 18;
+        private _font: string = "微软雅黑";
+
+        set size(size: number) {
+            this.size = size;
+        }
+
+        set font(font: string) {
+            this._font = font;
+        }
+
+        render(context2D: CanvasRenderingContext2D) {
+            context2D.fillStyle = this.color;
+            context2D.font = this._size + " " + this._font;
+            context2D.fillText(this.text, this.x, 0);
+        }
+
+        hitTest(x: number, y: number) {
+            if (this.text) {
+                var rect = new Rectangle(0, 0, this.text.length * 10, 10);
+                console.log("width:" + rect.width + " height" + rect.height);
+                if (rect.isPointInRectangle(x, y)) {
+                    var eventManager = engine.EventManager.getInstance();
+                    if (this.eventArray.length != 0) {
+                        eventManager.targets.push(this);
+                    }
+                    return this;
+                } else {
+                    return null;
+                }
+            }
+        }
+    }
+
+
+    export class Shape extends DisplayObject {
+
+        width: number;
+        height: number;
+        fillColor: string = "#000000"
+        alpha: number = 1;
+
+        constructor() {
+            super();
+        }
+
+        beginFill(fillColor: string, alpha: number) {
+            var type = "^#[0-9a-fA-F]{6}{1}$";
+            var test = new RegExp(type);
+            if (fillColor.match(test) != null) {
+                this.fillColor = fillColor;
+            } else {
+                console.log("invaild color value");
+            }
+            if (isInRange(0, alpha, 1)) {
+                this.alpha = alpha
+            } else {
+                console.log("invaild alpha value");
+            }
+        }
+
+        endFill() {
+            this.fillColor = "#000000";
+            this.alpha = 1;
+        }
+
+        drawRect(x: number, y: number, width: number, height: number, context2D: CanvasRenderingContext2D) {
+            context2D.globalAlpha = this.alpha;
+            context2D.fillStyle = this.fillColor;
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.render(context2D);
+        }
+
+        render(context2D: CanvasRenderingContext2D) {
+            context2D.globalAlpha = this.alpha;
+            context2D.fillStyle = this.fillColor;
+            context2D.fillRect(this.x, this.y, this.width, this.height);
+        }
+
+        //let a = new engine.Rectangle();
+
+
+        hitTest(x: number, y: number) {
+
+        }
+    }
+
+    export class DisplayObjectContainer extends DisplayObject implements Drawable {
+
+        array: DisplayObject[] = [];
+
+        render(context2D: CanvasRenderingContext2D) {
+            for (let Drawable of this.array) {
+                Drawable.draw(context2D);
+            }
+        }
+
+        addChild(child: DisplayObject) {
+            if (this.array.indexOf(child) == -1) {
+                this.array.push(child);
+                child.parent = this;
+            }
+        }
+
+        hitTest(x, y) {
+            for (let i = this.array.length - 1; i >= 0; i--) {
+                console.log("length:" + this.array.length);
+                let target = this.array[i];
+                console.log("target:" + target);
+                let point = new Point(x, y);
+                let invertChildLocalMatrix = invertMatrix(target.relativeMatrix);
+                let pointBaseOnChild = pointAppendMatrix(point, invertChildLocalMatrix);
+                let hitTestResult = target.hitTest(pointBaseOnChild.x, pointBaseOnChild.y);
+                console.log("pointBaseOnChild.x:" + pointBaseOnChild.x + " pointBaseOnChild.y" + pointBaseOnChild.y);
+                if (hitTestResult) {
+                    return hitTestResult;
+                } else {
+                    return null;
+                }
+
+            }
+        }
+
+    }
+
+    /*export class Rectangle {
+    
+        x = 0;
+        y = 0;
+        width = 1;
+        height = 1;
+        isPointInRectangle(point: Point) {
+            let rect = this;
+            if (point.x < rect.width + rect.x && point.y < rect.height + rect.y && point.x < rect.x && point.y > rect.y) {
+                return true;
+            }
+        }
+    
+    }*/
 
     export type MovieClipData = {
 
-        name : string;
-        frames : MovieClipFrameData[]
+        name: string,
+        frames: MovieClipFrameData[]
     }
 
     export type MovieClipFrameData = {
         "image": string
     }
-
-
-    export interface Drawable {
-        draw(context2D: CanvasRenderingContext2D);
-    }
-
-    export abstract class DisplayObject implements Drawable{
-        
-        x : number = 0;
-        y : number = 0;
-        scaleX : number = 1;
-        scaleY : number = 1;
-        rotation : number = 0;
-
-        matrix : Matrix = null;
-        globalMatrix : Matrix = null;
-
-        alpha : number = 1;//相对
-        globalAlpha : number = 1;//全局                             
-        parent : DisplayObject = null;
-
-        moveSpeed : number = 0;
-
-        touchEnable : boolean = false;
-
-        eventArray : TheEvent[] = [];
-
-        constructor(){
-
-            this.matrix = new Matrix();
-            this.globalMatrix = new Matrix();
-        
-        }
-    
-    
-        //final，所有子类都要执行且不能修改
-        draw(context2D: CanvasRenderingContext2D) {
-        
-
-        this.matrix.updateFromDisplayObject(this.x, this.y, this.scaleX, this.scaleY, this.rotation);//初始化矩阵
-        //console.log(this.matrix.toString());
-
-
-        //Alpha值
-        if(this.parent){
-
-            this.globalAlpha = this.parent.globalAlpha * this.alpha;
-            this.globalMatrix = matrixAppendMatrix(this.matrix, this.parent.globalMatrix);
-
-        }else{
-
-            this.globalAlpha = this.alpha;
-            this.globalMatrix = this.matrix;
-        }
-
-        context2D.globalAlpha = this.globalAlpha;
-        //console.log(context2D.globalAlpha);
-        
-        //变换
-        
-        context2D.setTransform(this.globalMatrix.a, this.globalMatrix.b, this.globalMatrix.c, this.globalMatrix.d, this.globalMatrix.tx, this.globalMatrix.ty);
-        this.render(context2D);
-
-        //模板方法模式
-    }
-
-        //添加到本控件的EVent数组中
-        addEventListener(type : string, func : Function, targetDisplayObject : DisplayObject, ifCapture : boolean){
-        
-            let e = new TheEvent(type, func, targetDisplayObject, ifCapture);
-            this.eventArray.push(e);
-        }
-
-        //在子类中重写
-        abstract render(context2D: CanvasRenderingContext2D);
-
-        abstract hitTest(x : number, y : number) : DisplayObject;//返回值确定被点击的控件
-
-    }
-
-
-
-    export class Bitmap extends DisplayObject{
-    
-        image: HTMLImageElement;
-
-        constructor() {
-        
-            super();
-            this.image = document.createElement("img");
- 
-        }
-
-        render(context2D: CanvasRenderingContext2D) {
-
-            context2D.drawImage(this.image, 0, 0, this.image.width, this.image.height);
-            //context2D.drawImage(this.image, 0, 0);
-        }
-
-        hitTest(x : number, y : number){
-
-            var rect = new Rectangle();
-            rect.x = 0;
-            rect.y = 0;
-            rect.width = this.image.width;
-            rect.height = this.image.height;
-            if(rect.isPointInRectangle(new Point(x, y))){
-
-                if(this.eventArray.length != 0){
-                
-                    EventManager.getInstance().targetDisplayObjcetArray.push(this);
-                }
-
-                return this;
-
-            }else{
-
-                return null;
-            }
-    
-        }
-    }
-
-
-    export class TextField extends DisplayObject{
-    
-        text: string = "";
-
-        color : string = "";
-  
-        size : number = 0;
-
-        render(context2D: CanvasRenderingContext2D) {
-        
-            context2D.font = "normal lighter " + this.size + "px"  + " cursive";
-            context2D.fillStyle = this.color;
-            context2D.fillText(this.text, 0, 0);
-
-        }
- 
-        hitTest(x : number, y : number){
-
-            var rect = new Rectangle();
-            rect.x = 0;
-            rect.y = -this.size;//????????
-            rect.width = this.size * this.text.length;
-            rect.height = this.size;
-
-            if(rect.isPointInRectangle(new Point(x, y))){
-
-                if(this.eventArray.length != 0){
-
-                    EventManager.getInstance().targetDisplayObjcetArray.push(this);
-                }
-                return this;
-
-            }else{
-
-                return null;
-            }
-        
-        }
-    }
-
-
-    export class Button extends DisplayObject{
-
-        text: string = "";
-
-        color : string = "";
-
-        size : number = 0;
-
-        enable : boolean = false;
- 
-        render(context2D: CanvasRenderingContext2D) {
-        
-            context2D.font = "normal lighter " + this.size + "px"  + " cursive";
-            context2D.fillStyle = this.color;
-            context2D.fillText(this.text, 0, 0);
-
-        }
-
-        hitTest(x : number, y : number){
-
-            var rect = new Rectangle();
-            rect.x = 0;
-            rect.y = -this.size;//????????
-            rect.width = this.size * this.text.length;
-            rect.height = this.size;
-
-            if(rect.isPointInRectangle(new Point(x, y)) && this.enable){
-
-                if(this.eventArray.length != 0){
-
-                    EventManager.getInstance().targetDisplayObjcetArray.push(this);
-                }
-                return this;
-
-            }else{
-
-                return null;
-            }    
-        }
-
-        addEventListener(type : string, func : Function, targetDisplayObject : DisplayObject, ifCapture : boolean){
-        
-            let e = new TheEvent(type, func, targetDisplayObject, ifCapture);
-            this.eventArray.push(e);
-        }
-    
-    }
-    
-
-
-    export class DisplayObjectContainer extends DisplayObject{
-    
-        children : DisplayObject[] = [];
-
-        render(context2D : CanvasRenderingContext2D){
-
-            for (let displayObject of this.children) {
-
-                displayObject.draw(context2D);
-            } 
-        }
- 
-        addChild(child : DisplayObject){
-
-            this.children.push(child);
-            child.parent = this;
-
-        }
-
-        removeChild(displayObject : DisplayObject){
-
-            var tempArray = this.children.concat();
-            for(let each of tempArray){
-
-                if(each == displayObject){
-
-                    var index = this.children.indexOf(each);
-                    tempArray.splice(index, 1);
-                    this.children = tempArray;
-                    return;
-                }
-            }
-        }
-
-        hitTest(x : number, y : number){
-
-            if(this.eventArray.length != 0){
-
-                EventManager.getInstance().targetDisplayObjcetArray.push(this);
-            }
-
-            for(var i = this.children.length - 1; i >= 0; i--){
-
-                var child = this.children[i];
-                var pointBaseOnChild = pointAppendMatrix(new Point(x, y), invertMatrix(child.matrix));//通过与逆矩阵相乘得出点的相对坐标---点向量
-                var hitTestResult = child.hitTest(pointBaseOnChild.x, pointBaseOnChild.y);//树的遍历
-            
-                if(hitTestResult){
-                                
-                    return hitTestResult;
-                }
-            }
-
-            return null;
-        }
-
-    }
-
 
     export class MovieClip extends Bitmap {
 
@@ -290,24 +296,20 @@ namespace engine {
 
         private static FRAME_TIME = 20;
 
-        private static TOTAL_FRAME = 12;
+        private static TOTAL_FRAME = 10;
 
         private currentFrameIndex: number;
-  
-        private data: MovieClipData;
-        
-        isMove : boolean = false;
 
-        constructor(data : MovieClipData) {
-            
+        private data: MovieClipData;
+
+        constructor(data: MovieClipData) {
             super();
-            this.moveSpeed = 2;
-            this.setMovieClipData(data);//先执行一次更新
+            this.setMovieClipData(data);
             this.play();
         }
 
         ticker = (deltaTime) => {
-            
+            // this.removeChild();
             this.advancedTime += deltaTime;
             if (this.advancedTime >= MovieClip.FRAME_TIME * MovieClip.TOTAL_FRAME) {
                 this.advancedTime -= MovieClip.FRAME_TIME * MovieClip.TOTAL_FRAME;
@@ -316,25 +318,60 @@ namespace engine {
 
             let data = this.data;
 
-            console.log(this.currentFrameIndex);
-            this.image.src = data.frames[this.currentFrameIndex].image;
+            let frameData = data.frames[this.currentFrameIndex];
+            let url = frameData.image;
         }
 
         play() {
-
-            Ticker.getInstance().register(this.ticker);
+            engine.Ticker.getInstance().register(this.ticker);
         }
 
         stop() {
-
-            Ticker.getInstance().unregister(this.ticker)
+            engine.Ticker.getInstance().unregister(this.ticker)
         }
 
         setMovieClipData(data: MovieClipData) {
             this.data = data;
             this.currentFrameIndex = 0;
+            // 创建 / 更新 
 
         }
+    }
+
+    export class Timer {
+
+        interval: number = 1000;
+        loopNum: number = 1;
+        delayTime: number = 0;
+
+        constructor(interval: number, loopNum: number, delayTime: number) {
+            this.interval = interval;
+            this.loopNum = loopNum;
+            if (arguments.length >= 3) {
+                this.delayTime = delayTime;
+            }
+        }
+
+        addEventListener() {
+
+        }
+
+    }
+
+    export class Tween {
+
+        target:any;
+        totalStep:number = 10;
+        currentStep:number = 0;
+
+        get(target:any){
+            this.target = target;
+        }
+
+        to(x:number,y:number){
+
+        }
+
     }
 
 }
